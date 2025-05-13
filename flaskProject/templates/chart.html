@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Chart</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <style>
+        .button {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            padding: 10px 20px;
+            font-size: 24px; /* Größe von Text und Icon */
+        }
+        .button i {
+            font-size: inherit; /* Setzt die Icon-Größe auf die Textgröße */
+        }
+        .button h1 {
+            margin: 0; /* Entfernt Standardmargins von <h1> */
+            font-size: inherit; /* Setzt die Textgröße auf die der umgebenden Button */
+        }
+    </style>
+</head>
+<body>
+    <div style="display: flex; justify-content: center;">
+        <div style="height: 500px; width: 1000px;">
+            <canvas id="heart"></canvas>
+        </div>
+        <div style="height: 500px; width: 1000px">
+            <canvas id="steps"></canvas>
+        </div>
+    </div>
+    <div style="display: flex; justify-content: center; align-items: center; gap: 20px">
+        <button class="button" onclick="makeRequest()">
+            <i class="fas fa-save"></i><h1>Daten Speichern</h1>
+        </button>
+        <button class="button" id="stop" onclick="stop()">
+            <i class="fas fa-stop"></i><h1>Stop</h1>
+        </button>
+        <button class="button" id="go_on" onclick="go_on()">
+            <i class="fas fa-forward"></i><h1>Weiter</h1>
+        </button>
+        <button class="button" onclick="reset()">
+            <i class="fas fa-undo"></i><h1>Zurücksetzen</h1>
+        </button>
+    </div>
+    <script>
+        function makeRequest(){
+            alert("Daten erfolgreich gespeichert!")
+            fetch('http://localhost:5000/save')
+        }
+        function stop(){
+            fetch("http://localhost:5000/stop")
+            document.getElementById("stop").disabled = true
+            document.getElementById("go_on").disabled = false
+        }
+        function go_on(){
+            fetch("http://localhost:5000/go_on")
+            document.getElementById("stop").disabled = false
+            document.getElementById("go_on").disabled = true
+        }
+        function reset(){
+            fetch("http://localhost:5000/reset")
+        }
+
+        document.getElementById("go_on").disabled = true
+
+        var ctx = document.getElementById('heart').getContext('2d');
+        var chart_heart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                datasets: [{
+                    label: 'Heart-Rate',
+                    backgroundColor: 'rgb(255,0,55)',
+                    borderColor: 'rgb(255,0,55)',
+                    data: [] // Data
+                }]
+            },
+            options: {
+                maintainAspectRatio: false,
+                scales: {
+                    y: { // for Chart.js version 3.x onwards, use 'y' instead of 'yAxes' for version 2.x
+                        beginAtZero: false, // Set to false since your scale doesn't start at zero
+                        min: -20, // Minimum value for Y-axis
+                        max: 130, // Maximum value for Y-axis
+                        title: {
+                            display: true,
+                            text: 'BPM', // The label for the Y-axis
+                            font: {
+                                size: 16 // Adjust the font size as needed
+                                }
+                        }
+                    },
+                    x: {
+                        type: 'linear', // Explicitly set the x-axis to be linear
+                        title: {
+                            display: true,
+                            text: 'Time', // The label for the Y-axis
+                            font: {
+                                size: 16 // Adjust the font size as needed
+                                }
+                        }
+                    }
+                }
+            }
+        });
+
+        var ctx = document.getElementById('steps').getContext('2d');
+        var chart_steps = new Chart(ctx, {
+            type: 'line',
+            data: {
+                datasets: [{
+                    label: 'Steps/minute',
+                    backgroundColor: 'rgb(0,60,255)',
+                    borderColor: 'rgb(0,60,255)',
+                    data: []
+                }]
+            },
+            options: {
+                maintainAspectRatio: false,
+                scales: {
+                    y: { // for Chart.js version 3.x onwards, use 'y' instead of 'yAxes' for version 2.x
+                        title: {
+                            display: true,
+                            text: 'Steps', // The label for the Y-axis
+                            font: {
+                                size: 16 // Adjust the font size as needed
+                                }
+                        }
+                    },
+                    x: {
+                        type: 'linear', // Explicitly set the x-axis to be linear
+                        title: {
+                            display: true,
+                            text: 'Time', // The label for the Y-axis
+                            font: {
+                                size: 16 // Adjust the font size as needed
+                                }
+                        }
+                    }
+                }
+            }
+        });
+
+        // Function to update the chart
+        function updateChart() {
+            fetch('/data')
+                .then(response => response.json())
+                .then(data => {
+                    // Hier müssen die daten als {x: x, y: y} rein:
+                    chart_heart.data.datasets[0].data = []
+                    // Hier sind die Daten als Array drinne:
+                    data.heart.rate
+                    console.log("latest data: " + data.heart.rate[data.heart.rate.length - 1])
+
+                    for (let i = 0; i < data.heart.rate.length; i++) {
+                        if(data.heart.rate[i] <= 0){
+                            chart_heart.data.datasets[0].data.push({x: i, y: chart_heart.data.datasets[0].data[i - 1].y})
+                        }
+                        else{
+                            chart_heart.data.datasets[0].data.push({x: i, y: data.heart.rate[i]})
+                        }
+                    }
+                    chart_heart.update()
+
+                    // Chart for Steps:
+                    chart_steps.data.datasets[0].data = []
+
+                    for (let i = 60; i < data.steps.step_count.length; i += 60) {
+                        var minuteSteps = data.steps.step_count[i] -  data.steps.step_count[i - 60]
+
+                        minuteSteps = minuteSteps / 60
+                        chart_steps.data.datasets[0].data.push({x: i, y: minuteSteps});
+                    }
+
+                    chart_steps.update();
+                });
+        }
+
+        // Update the chart every 1 seconds
+        setInterval(updateChart, 1000);
+    </script>
+</body>
+</html>
