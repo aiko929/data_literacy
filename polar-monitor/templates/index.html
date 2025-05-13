@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Polar Heart Rate Monitor</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        .container {
+            background-color: white;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            width: 100%;
+            max-width: 700px;
+            text-align: center;
+        }
+        h1 {
+            color: #2c3e50;
+            margin-bottom: 30px;
+        }
+        .control-panel {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 30px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        .input-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            min-width: 200px;
+        }
+        input, button {
+            padding: 10px 15px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+            transition: all 0.2s ease;
+        }
+        input:focus {
+            outline: none;
+            border-color: #007bff;
+            box-shadow: 0 0 0 2px rgba(0,123,255,0.25);
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            min-width: 150px;
+        }
+        button:hover {
+            background-color: #0056b3;
+            transform: translateY(-1px);
+        }
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+        .heart-rate-display {
+            text-align: center;
+            padding: 30px;
+            background-color: #f8f9fa;
+            border-radius: 10px;
+            margin: 30px 0;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        .heart-rate-value {
+            font-size: 64px;
+            font-weight: bold;
+            color: #dc3545;
+            margin-bottom: 10px;
+        }
+        .timestamp {
+            font-size: 16px;
+            color: #6c757d;
+        }
+        .status {
+            margin: 20px 0;
+            padding: 15px;
+            border-radius: 6px;
+            background-color: #e9ecef;
+            font-weight: 500;
+        }
+        .debug-section {
+            margin-top: 20px;
+            padding: 20px;
+            background-color: #1e1e1e;
+            border-radius: 10px;
+            color: #fff;
+            font-family: monospace;
+            max-height: 300px;
+            overflow-y: auto;
+            display: none;
+            transition: all 0.3s ease;
+        }
+        .debug-section.visible {
+            display: block;
+        }
+        .debug-section h3 {
+            margin-top: 0;
+            color: #fff;
+            font-size: 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .debug-message {
+            margin: 8px 0;
+            white-space: pre-wrap;
+            font-size: 13px;
+        }
+        .toggle-debug {
+            background-color: #343a40;
+            color: white;
+            padding: 5px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: background-color 0.2s;
+        }
+        .toggle-debug:hover {
+            background-color: #495057;
+        }
+        .graph-container {
+            width: 100%;
+            height: 300px;
+            margin: 20px 0;
+            background-color: white;
+            border-radius: 10px;
+            padding: 15px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        .graph-settings {
+            margin: 10px 0;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border-radius: 8px;
+            transition: all 0.3s ease;
+        }
+        .graph-settings-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+            user-select: none;
+        }
+        .graph-settings-header:hover {
+            color: #007bff;
+        }
+        .graph-settings-content {
+            display: none;
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 1px solid #dee2e6;
+        }
+        .graph-settings-content.visible {
+            display: block;
+        }
+        .settings-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }
+        .setting-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        .setting-group label {
+            font-size: 14px;
+            color: #495057;
+        }
+        .setting-group input {
+            padding: 8px;
+            border: 1px solid #ced4da;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        .setting-group input:focus {
+            border-color: #80bdff;
+            box-shadow: 0 0 0 0.2rem rgba(0,123,255,.25);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Polar Heart Rate Monitor</h1>
+        
+        <div class="control-panel">
+            <div class="input-group">
+                <label for="device-name">Device Name:</label>
+                <input type="text" id="device-name" value="Polar" placeholder="Enter device name">
+            </div>
+            <div class="input-group">
+                <label for="filename">Save Filename:</label>
+                <input type="text" id="filename" value="heart_rate_data" placeholder="Enter filename">
+            </div>
+        </div>
+
+        <div class="control-panel">
+            <button id="start-btn" onclick="startMonitoring()">Start Monitoring</button>
+            <button id="stop-btn" onclick="stopMonitoring()">Stop Monitoring</button>
+            <button id="debug-btn" onclick="toggleDebug()">Toggle Debug</button>
+        </div>
+
+        <div class="heart-rate-display">
+            <div class="heart-rate-value" id="heart-rate">--</div>
+            <div class="timestamp" id="timestamp">Last update: --</div>
+        </div>
+
+        <div class="graph-settings">
+            <div class="graph-settings-header" onclick="toggleGraphSettings()">
+                <span>Graph Settings</span>
+                <span id="settings-arrow">▼</span>
+            </div>
+            <div class="graph-settings-content" id="graph-settings-content">
+                <div class="settings-grid">
+                    <div class="setting-group">
+                        <label for="y-axis-min">Y-Axis Minimum:</label>
+                        <input type="number" id="y-axis-min" value="40" min="0" max="300">
+                    </div>
+                    <div class="setting-group">
+                        <label for="y-axis-max">Y-Axis Maximum:</label>
+                        <input type="number" id="y-axis-max" value="120" min="0" max="300">
+                    </div>
+                    <div class="setting-group">
+                        <label for="data-points">Number of Data Points:</label>
+                        <input type="number" id="data-points" value="50" min="10" max="9999">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="graph-container">
+            <canvas id="heartRateChart"></canvas>
+        </div>
+
+        <div class="status" id="status">Ready to start monitoring</div>
+
+        <div class="debug-section" id="debug-section">
+            <h3>
+                Debug Output
+                <span class="toggle-debug" onclick="toggleDebug()">Hide Debug</span>
+            </h3>
+            <div id="debug-messages"></div>
+        </div>
+    </div>
+
+    <script>
+        const socket = io();
+        let isMonitoring = false;
+        const debugMessages = document.getElementById('debug-messages');
+        const debugSection = document.getElementById('debug-section');
+        let isDebugVisible = false;
+
+        // Initialize the chart
+        const ctx = document.getElementById('heartRateChart').getContext('2d');
+        let maxDataPoints = 50; // Changed from const to let
+        let heartRateData = [];
+        let timeLabels = [];
+
+        const heartRateChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: timeLabels,
+                datasets: [{
+                    label: 'Heart Rate (BPM)',
+                    data: heartRateData,
+                    borderColor: '#dc3545',
+                    backgroundColor: 'rgba(220, 53, 69, 0.1)',
+                    borderWidth: 2,
+                    fill: true,
+                    tension: 0.4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: false,
+                        min: 40,
+                        max: 120,
+                        title: {
+                            display: true,
+                            text: 'Heart Rate (BPM)'
+                        }
+                    },
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'Time'
+                        },
+                        ticks: {
+                            maxRotation: 45,
+                            minRotation: 45
+                        }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        display: false
+                    }
+                },
+                animation: {
+                    duration: 0 // Disable animation for smoother updates
+                }
+            }
+        });
+
+        function updateChart(hr, time) {
+            // Add new data point
+            heartRateData.push(hr);
+            timeLabels.push(time);
+            
+            // Keep only the last maxDataPoints
+            if (heartRateData.length > maxDataPoints) {
+                heartRateData = heartRateData.slice(-maxDataPoints);
+                timeLabels = timeLabels.slice(-maxDataPoints);
+            }
+            
+            // Update the chart
+            heartRateChart.data.labels = timeLabels;
+            heartRateChart.data.datasets[0].data = heartRateData;
+            heartRateChart.update('none'); // Use 'none' mode for better performance
+        }
+
+        function toggleDebug() {
+            isDebugVisible = !isDebugVisible;
+            debugSection.classList.toggle('visible');
+            const toggleButton = debugSection.querySelector('.toggle-debug');
+            toggleButton.textContent = isDebugVisible ? 'Hide Debug' : 'Show Debug';
+        }
+
+        socket.on('heart_rate_update', function(data) {
+            document.getElementById('heart-rate').textContent = data.hr;
+            document.getElementById('timestamp').textContent = `Last update: ${data.time}`;
+            updateChart(data.hr, data.time);
+        });
+
+        socket.on('debug_message', function(data) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'debug-message';
+            messageDiv.textContent = data.message;
+            debugMessages.appendChild(messageDiv);
+            debugMessages.scrollTop = debugMessages.scrollHeight;
+        });
+
+        async function startMonitoring() {
+            const deviceName = document.getElementById('device-name').value;
+            
+            try {
+                const response = await fetch('/start', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ device_name: deviceName }),
+                });
+                
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    isMonitoring = true;
+                    document.getElementById('start-btn').disabled = true;
+                    document.getElementById('stop-btn').disabled = false;
+                    document.getElementById('status').textContent = 'Monitoring in progress...';
+                } else {
+                    document.getElementById('status').textContent = data.message;
+                }
+            } catch (error) {
+                document.getElementById('status').textContent = 'Error starting monitoring: ' + error;
+            }
+        }
+
+        async function stopMonitoring() {
+            const filename = document.getElementById('filename').value;
+            
+            try {
+                const response = await fetch('/stop', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ filename: filename }),
+                });
+                
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    isMonitoring = false;
+                    document.getElementById('start-btn').disabled = false;
+                    document.getElementById('stop-btn').disabled = true;
+                    document.getElementById('status').textContent = 'Monitoring stopped. Data saved.';
+                } else {
+                    document.getElementById('status').textContent = data.message;
+                }
+            } catch (error) {
+                document.getElementById('status').textContent = 'Error stopping monitoring: ' + error;
+            }
+        }
+
+        // Graph settings functionality
+        function toggleGraphSettings() {
+            const content = document.getElementById('graph-settings-content');
+            const arrow = document.getElementById('settings-arrow');
+            content.classList.toggle('visible');
+            arrow.textContent = content.classList.contains('visible') ? '▼' : '▶';
+        }
+
+        // Update chart settings when inputs change
+        document.getElementById('y-axis-min').addEventListener('change', updateChartSettings);
+        document.getElementById('y-axis-max').addEventListener('change', updateChartSettings);
+        document.getElementById('data-points').addEventListener('change', updateChartSettings);
+
+        function updateChartSettings() {
+            const yMin = parseInt(document.getElementById('y-axis-min').value);
+            const yMax = parseInt(document.getElementById('y-axis-max').value);
+            const newMaxPoints = parseInt(document.getElementById('data-points').value);
+
+            // Update y-axis range
+            heartRateChart.options.scales.y.min = yMin;
+            heartRateChart.options.scales.y.max = yMax;
+            
+            // Update max data points
+            maxDataPoints = newMaxPoints;
+            
+            // Update display arrays with latest maxDataPoints from complete history
+            heartRateData = heartRateData.slice(-maxDataPoints);
+            timeLabels = timeLabels.slice(-maxDataPoints);
+
+            
+            heartRateChart.update();
+        }
+    </script>
+</body>
+</html>
