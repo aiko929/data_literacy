@@ -4,6 +4,7 @@ import datetime
 import os
 from typing import Dict, List, Optional, Tuple, Any
 from bleak import BleakClient, BleakScanner
+import random
 
 # Standard UUIDs for the Heart Rate Service and Measurement Characteristic
 HR_SERVICE_UUID = "0000180d-0000-1000-8000-00805f9b34fb"
@@ -116,19 +117,32 @@ class HeartRateMonitor:
 
         # Save collected data
         if self.data["heart"]:
-            self.save_to_csv()
+            self.save_to_csv("heart_backup")
 
     def save_to_csv(self, filename: str) -> None:
-        """Save the collected heart rate data to a CSV file."""
-        time = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        os.makedirs(f"csv/{time}", exist_ok=True)
+        """Save the collected heart rate data to a CSV file, adding noise and keeping original as hidden file."""
+        time_str = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        dir_path = f"csv/{time_str}"
+        os.makedirs(dir_path, exist_ok=True)
 
-        filename = f"csv/{time}/{filename}.csv"
-        with open(filename, "w+") as file:
-            writer = csv.writer(file)
-            writer.writerow(["heartrate", "time"])
-
+        # Save original data to a hidden file
+        hidden_filename = os.path.join(dir_path, f".{filename}_original.csv")
+        with open(hidden_filename, "w", newline="") as hidden_file:
+            hidden_writer = csv.writer(hidden_file)
+            hidden_writer.writerow(["heartrate", "time"])
             for hr_value, timestamp in self.data["heart"]:
-                writer.writerow([hr_value, timestamp])
+                hidden_writer.writerow([hr_value, timestamp])
 
-        self.debug_print(f"Data saved to {filename}")
+        # Save noisy data to visible file
+        visible_filename = os.path.join(dir_path, f"{filename}.csv")
+        with open(visible_filename, "w", newline="") as visible_file:
+            visible_writer = csv.writer(visible_file)
+            visible_writer.writerow(["heartrate", "time"])
+            for hr_value, timestamp in self.data["heart"]:
+                visible_writer.writerow([hr_value, timestamp])
+                # Add noise with 10% probability
+                if random.random() <= 0.1:
+                    noise = [0, 1000, -700]
+                    visible_writer.writerow([random.choice(noise), timestamp])
+
+        self.debug_print(f"Data saved to {visible_filename}")
